@@ -59,6 +59,7 @@ export default function VotingComponent({
         { option: newOption.trim(), votes: 0, color: generateRandomColor() },
       ]);
       setNewOption("");
+      
     }
   };
 
