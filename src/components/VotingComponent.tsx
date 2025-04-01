@@ -31,6 +31,7 @@ export default function VotingComponent({
   const [options, setOptions] = useState<Vote[]>([]);
   const [newOption, setNewOption] = useState("");
   const [isVoteStarted, setIsVoteStarted] = useState(false);
+  const [winningOption, setWinningOption] = useState<Vote | null>(null);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -73,20 +74,24 @@ export default function VotingComponent({
   const handleSubmitVote = (e: MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     if (isVoteStarted) {
-      // TODO: stop vote
-      // TODO: display the highest voted option
-      console.log(
-        "Highest voted option:",
-        options.reduce((prev, current) =>
-          prev.votes > current.votes ? prev : current,
-        ),
+      const winner = options.reduce((prev, current) =>
+        prev.votes > current.votes ? prev : current,
       );
+      setWinningOption(winner);
       setIsVoteStarted(false);
     } else {
       if (options.length >= 2) {
         setIsVoteStarted(true);
+        setWinningOption(null);
       }
     }
+  };
+
+  const handleReset = () => {
+    setOptions([]);
+    setNewOption("");
+    setIsVoteStarted(false);
+    setWinningOption(null);
   };
 
   const handleVote = (option: Vote) => {
@@ -104,29 +109,31 @@ export default function VotingComponent({
         <DialogTitle>Create a Vote</DialogTitle>
         <Paper sx={{ p: 3, mb: 3 }}>
           <Stack spacing={3}>
-            <Box>
-              <Typography variant="subtitle1" gutterBottom>
-                Voting options
-              </Typography>
-              <Stack direction="row" spacing={2}>
-                <Textarea
-                  className="w-full focus-visible:ring-0"
-                  value={newOption}
-                  onChange={(e) => setNewOption(e.target.value)}
-                  placeholder="Enter a voting option"
-                />
-                <Button
-                  variant="default"
-                  className="cursor-pointer"
-                  onClick={handleAddOption}
-                  disabled={!newOption.trim()}
-                >
-                  <HiOutlinePlus />
-                </Button>
-              </Stack>
-            </Box>
+            {!isVoteStarted && !winningOption && (
+              <Box>
+                <Typography variant="subtitle1" gutterBottom>
+                  Voting options
+                </Typography>
+                <Stack direction="row" spacing={2}>
+                  <Textarea
+                    className="w-full focus-visible:ring-0"
+                    value={newOption}
+                    onChange={(e) => setNewOption(e.target.value)}
+                    placeholder="Enter a voting option"
+                  />
+                  <Button
+                    variant="default"
+                    className="cursor-pointer"
+                    onClick={handleAddOption}
+                    disabled={!newOption.trim()}
+                  >
+                    <HiOutlinePlus />
+                  </Button>
+                </Stack>
+              </Box>
+            )}
 
-            {options.length > 0 && (
+            {options.length > 0 && !winningOption && (
               <Box>
                 <Typography variant="subtitle1" gutterBottom>
                   Current Options:
@@ -164,14 +171,39 @@ export default function VotingComponent({
               </Box>
             )}
 
-            <Button
-              type="submit"
-              variant="default"
-              disabled={options.length < 2}
-              onClick={handleSubmitVote}
-            >
-              {isVoteStarted ? "Stop Vote" : "Start Vote"}
-            </Button>
+            {winningOption && (
+              <Box className="text-center">
+                <Typography variant="h6" gutterBottom>
+                  Voting Results
+                </Typography>
+                <Paper className="p-4 bg-green-50">
+                  <Typography variant="h5" className="font-bold text-green-700">
+                    {winningOption.option}
+                  </Typography>
+                  <Typography variant="body1" className="mt-2">
+                    Votes: {winningOption.votes}
+                  </Typography>
+                </Paper>
+                <Button
+                  variant="outline"
+                  className="mt-4"
+                  onClick={handleReset}
+                >
+                  Start New Vote
+                </Button>
+              </Box>
+            )}
+
+            {!winningOption && (
+              <Button
+                type="submit"
+                variant="default"
+                disabled={options.length < 2}
+                onClick={handleSubmitVote}
+              >
+                {isVoteStarted ? "Stop Vote" : "Start Vote"}
+              </Button>
+            )}
           </Stack>
         </Paper>
       </DialogContent>
