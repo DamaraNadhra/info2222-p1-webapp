@@ -72,7 +72,6 @@ const Sidebar: FC<SidebarProps> = ({
       <div className="mt-2">
         <button
           className="flex w-full cursor-pointer items-center justify-center rounded p-2 text-left hover:bg-gray-200"
-          onClick={() => {}}
         >
           <GoFileSubmodule className="h-10 w-10" />
         </button>

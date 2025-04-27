@@ -1,20 +1,15 @@
 "use client"
 
-import { useState, useEffect } from "react";
-import type { FormEvent, MouseEvent, ChangeEvent } from "react";
+import { useState } from "react";
+import type { MouseEvent } from "react";
 import { Box, Typography, Paper, Stack } from "@mui/material";
 import { Button } from "~/components/ui/button";
 import { Textarea } from "~/components/ui/textarea";
 import { HiOutlinePlus } from "react-icons/hi";
-import { FaPlus } from "react-icons/fa";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
-  DialogDescription,
-  DialogTrigger,
-  DialogClose,
 } from "~/components/ui/dialog";
 import { Progress } from "~/components/ui/progress";
 
@@ -34,12 +29,6 @@ export default function VotingComponent({
   const [newOption, setNewOption] = useState("");
   const [isVoteStarted, setIsVoteStarted] = useState(false);
   const [winningOption, setWinningOption] = useState<Vote | null>(null);
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
 
   const generateRandomColor = () => {
     return (

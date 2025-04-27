@@ -47,21 +47,21 @@ export default function Notes() {
   const createChannel = api.channel.createChannel.useMutation();
 
   const handleDeleteChannel = (channelId: string) => {
-    deleteChannel.mutateAsync({ id: channelId });
+    void deleteChannel.mutateAsync({ id: channelId });
     if (channelId === selectedChannel?.id) {
       setSelectedChannel(null);
     }
   };
 
   const handleDeleteMessage = (messageId: string) => {
-    deleteMessage.mutateAsync({ id: messageId });
+    void deleteMessage.mutateAsync({ id: messageId });
   };
 
   const handleCreateChannel = () => {
     const slug = prompt("Enter a name for the new channel");
     if (slug) {
       const slugified = slugify(slug);
-      createChannel.mutateAsync({ slug: slugified });
+      void createChannel.mutateAsync({ slug: slugified });
     }
   };
 
@@ -80,7 +80,7 @@ export default function Notes() {
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault(); // Prevent form submission and page refresh
     if (selectedChannel) {
-      addMessage.mutateAsync({
+      void addMessage.mutateAsync({
         channelId: selectedChannel.id,
         content: message,
       });
@@ -103,7 +103,7 @@ export default function Notes() {
     const slug = prompt("Enter a name for the new channel");
     if (slug) {
       const slugified = slugify(slug);
-      addChannel(slugified, userData?.user?.id ?? "");
+      void addChannel(slugified, userData?.user?.id ?? "");
     }
   };
   return (
@@ -249,8 +249,8 @@ export default function Notes() {
               <div key={msg.id} className="group flex">
                 <Avatar className="mt-0.5 mr-3 h-10 w-10">
                   <AvatarImage
-                    src={msg.author?.image || "/profile-placeholder.png"}
-                    alt={msg.author?.name || "User"}
+                    src={msg.author?.image ?? "/profile-placeholder.png"}
+                    alt={msg.author?.name ?? "User"}
                   />
                   <AvatarFallback>{msg.author?.name?.charAt(0)}</AvatarFallback>
                 </Avatar>

@@ -28,7 +28,7 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
   // Load initial data and set up listeners
   useEffect(() => {
     // // Get Channels
-    fetchChannels(setChannels);
+    void fetchChannels(setChannels);
 
     // Listen for new and deleted messages
     const messageListener = supabase
@@ -72,16 +72,16 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
       .subscribe();
     console.log("Listening for changes");
     return () => {
-      supabase.removeChannel(messageListener);
-      supabase.removeChannel(userListener);
-      supabase.removeChannel(channelListener);
+      void supabase.removeChannel(messageListener);
+      void supabase.removeChannel(userListener);
+      void supabase.removeChannel(channelListener);
     };
   }, []);
 
   // Update when the route changes
   useEffect(() => {
     if (channelId) {
-      fetchMessages(channelId, (messages) => {
+      void fetchMessages(channelId, (messages) => {
         messages.forEach((x: any) => users.set(x.userId, x.user));
         setMessages(messages);
       });
@@ -94,13 +94,13 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
     console.log("newMessage", newMessage);
     if (newMessage && newMessage.channelId === channelId) {
       const handleAsync = async () => {
-        let authorId = newMessage.userId;
+        const authorId = newMessage.userId;
         if (!users.get(authorId))
           await fetchUser(authorId, (user) => handleNewOrUpdatedUser(user));
         // console.log("newMessage", newMessage);
         setMessages(messages.concat(newMessage));
       };
-      handleAsync();
+      void handleAsync();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newMessage]);
@@ -165,7 +165,7 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
  */
 export const fetchChannels = async (setState: (value: any) => void) => {
   try {
-    let { data } = await supabase.from("Channel").select("*");
+    const { data } = await supabase.from("Channel").select("*");
     if (setState) setState(data);
     return data;
   } catch (error) {
@@ -183,9 +183,9 @@ export const fetchUser = async (
   setState: (value: any) => void,
 ) => {
   try {
-    let { data } = await supabase.from("User").select(`*`).eq("id", userId);
+    const { data } = await supabase.from("User").select(`*`).eq("id", userId);
     if (!data) return null;
-    let user = data[0];
+    const user = data[0];
     if (setState) setState(user);
     return user;
   } catch (error) {
@@ -203,7 +203,7 @@ export const fetchMessages = async (
   setState: (value: any) => void,
 ) => {
   try {
-    let { data } = await supabase
+    const { data } = await supabase
       .from("Message")
       .select(`*, user:userId(*)`)
       .eq("channelId", channelId)
@@ -217,7 +217,7 @@ export const fetchMessages = async (
 
 export const fetchUsers = async (users: Map<string, User>) => {
   try {
-    let { data } = await supabase.from("User").select("*");
+    const { data } = await supabase.from("User").select("*");
     data?.forEach((user) => users.set(user.id, user));
     return users;
   } catch (error) {
@@ -232,7 +232,7 @@ export const fetchUsers = async (users: Map<string, User>) => {
  */
 export const addChannel = async (slug: string, user_id: string) => {
   try {
-    let { data } = await supabase
+    const { data } = await supabase
       .from("Channel")
       .insert([{ slug, createdById: user_id }])
       .select();
@@ -255,7 +255,7 @@ export const addMessage = async (
   user_id: string,
 ) => {
   try {
-    let { data } = await supabase
+    const { data } = await supabase
       .from("messages")
       .insert([{ message, channel_id, user_id }])
       .select();
@@ -271,7 +271,7 @@ export const addMessage = async (
  */
 export const deleteChannel = async (channel_id: string) => {
   try {
-    let { data } = await supabase
+    const { data } = await supabase
       .from("channels")
       .delete()
       .match({ id: channel_id });
@@ -287,7 +287,7 @@ export const deleteChannel = async (channel_id: string) => {
  */
 export const deleteMessage = async (message_id: string) => {
   try {
-    let { data } = await supabase
+    const { data } = await supabase
       .from("messages")
       .delete()
       .match({ id: message_id });

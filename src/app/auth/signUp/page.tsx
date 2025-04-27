@@ -29,7 +29,7 @@ export default function SignupForm() {
     onSuccess: () => {
       setSignUpLoading(false);
       toast.success("Account created successfully");
-      signIn("credentials", {
+      void signIn("credentials", {
         email,
         password,
         callbackUrl: "/",

@@ -1,5 +1,5 @@
-import type { NextApiRequest } from "next";
-import { PrismaClient } from "@prisma/client";
+
+import type { PrismaClient } from "@prisma/client";
 import { compare, genSalt, hash } from "bcryptjs";
 import { TRPCError } from "@trpc/server";
 
@@ -31,7 +31,7 @@ export class AuthHelper {
 
     const checkPassword = await compare(
       credentials.password,
-      user.password || "",
+      user.password ?? "",
     );
 
     // incorrect password

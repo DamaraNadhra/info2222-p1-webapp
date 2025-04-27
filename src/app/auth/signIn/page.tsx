@@ -30,7 +30,7 @@ export default function LoginForm() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    signIn("credentials", {
+    void signIn("credentials", {
       email,
       password,
       redirectTo: "/",
@@ -97,7 +97,7 @@ export default function LoginForm() {
               {loading ? "Signing in..." : "Sign in"}
             </Button>
             <span className="w-full text-start text-sm">
-              Don't have an account?{" "}
+              Don&apos;t have an account?{" "}
               <Link href="/auth/signUp" className="text-blue-500">
                 Sign up
               </Link>
