@@ -1,21 +1,21 @@
 "use client";
 
 import { useState, type FC, useCallback, useEffect } from "react";
-import Head from "next/head";
-import { FaFileAlt } from "react-icons/fa";
-import { IoIosColorPalette } from "react-icons/io";
 import { GrNotes } from "react-icons/gr";
 import { GoFileSubmodule } from "react-icons/go";
 
 import { FaCalendarAlt } from "react-icons/fa";
 import { FaHandPaper } from "react-icons/fa";
-import { CiShare2 } from "react-icons/ci";
-import { Textarea } from "~/components/ui/textarea";
 import { DrawableCanvas } from "~/components/DrawableCanvas";
 import { CalendarComponent } from "~/components/CalendarComponent";
 import VotingComponent from "~/components/VotingComponent";
-import { TbFileExport } from "react-icons/tb";
-import { Editor, EditorState, RichUtils, KeyBindingUtil } from "draft-js";
+import { TbFileExport, TbMessageCircle } from "react-icons/tb";
+import { EditorState, RichUtils, KeyBindingUtil } from "draft-js";
+import dynamic from "next/dynamic";
+
+const Editor = dynamic(() => import("draft-js").then((mod) => mod.Editor), {
+  ssr: false,
+});
 import "draft-js/dist/Draft.css";
 import { signOut, useSession } from "next-auth/react";
 import { jsPDF } from "jspdf";
@@ -99,7 +99,6 @@ const Sidebar: FC<SidebarProps> = ({
         <p className="text-center text-xs">Voting</p>
       </div>
 
-      {/* Color/Styling Controls */}
       <div className="mt-2">
         <button
           className="flex w-full cursor-pointer items-center justify-center rounded p-2 text-left hover:bg-gray-200"
@@ -108,6 +107,18 @@ const Sidebar: FC<SidebarProps> = ({
           <TbFileExport className="h-10 w-10" />
         </button>
         <p className="text-center text-xs">Export to pdf</p>
+      </div>
+
+      <div className="mt-2">
+        <button
+          className="flex w-full cursor-pointer items-center justify-center rounded p-2 text-left hover:bg-gray-200"
+          onClick={() => {
+            redirect("/chat");
+          }}
+        >
+          <TbMessageCircle className="h-10 w-10" />
+        </button>
+        <p className="text-center text-xs">Chat</p>
       </div>
     </div>
   );
@@ -224,7 +235,7 @@ export default function Home() {
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      redirect("/signIn");
+      redirect("/auth/signIn");
     }
   }, [status]);
 

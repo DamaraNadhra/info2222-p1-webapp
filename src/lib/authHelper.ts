@@ -46,7 +46,12 @@ export class AuthHelper {
     console.log("User has been authorized");
     return user;
   }
-  async register(input: { email: string; password?: string; image?: string }) {
+  async register(input: {
+    email: string;
+    password?: string;
+    image?: string;
+    name: string;
+  }) {
     const email = input.email.toLowerCase();
 
     const salt = await genSalt(10);
@@ -59,6 +64,7 @@ export class AuthHelper {
         email: email,
         image: input.image,
         password: hashedPassword,
+        name: input.name,
       },
     });
     return newUser;
@@ -67,6 +73,7 @@ export class AuthHelper {
   async credentialSignUp(input: {
     email: string;
     password: string;
+    name: string;
     code?: string;
   }) {
     const user = await this.prisma.user.findFirst({
@@ -89,6 +96,7 @@ export class AuthHelper {
     const newUser = await this.register({
       email: input.email,
       password: input.password,
+      name: input.name,
     });
 
     return newUser;

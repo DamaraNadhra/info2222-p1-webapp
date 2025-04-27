@@ -21,6 +21,7 @@ import { toast } from "react-hot-toast";
 import { api } from "~/trpc/react";
 export default function SignupForm() {
   const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [signUpLoading, setSignUpLoading] = useState(false);
@@ -43,7 +44,7 @@ export default function SignupForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignUpLoading(true);
-    await registerMutation.mutateAsync({ email, password });
+    await registerMutation.mutateAsync({ email, password, name });
   };
 
   return (
@@ -67,6 +68,17 @@ export default function SignupForm() {
                 placeholder="name@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input
+                id="name"
+                type="text"
+                placeholder="John Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 required
               />
             </div>

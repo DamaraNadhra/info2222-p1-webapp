@@ -13,12 +13,14 @@ export const userRouter = createTRPCRouter({
       z.object({
         email: z.string().email(),
         password: z.string().min(8),
+        name: z.string().min(1),
       }),
     )
     .mutation(async ({ ctx, input }) => {
       return await authHelper.credentialSignUp({
         email: input.email,
         password: input.password,
+        name: input.name,
       });
     }),
 });

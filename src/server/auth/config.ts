@@ -61,7 +61,6 @@ export const authConfig = {
       return token;
     },
     session: ({ session, token }) => {
-      console.log("session", session);
       if (token?.id) {
         session.user.id = token.id as string;
       }

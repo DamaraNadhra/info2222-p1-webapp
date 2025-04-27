@@ -98,7 +98,7 @@ export default function LoginForm() {
             </Button>
             <span className="w-full text-start text-sm">
               Don't have an account?{" "}
-              <Link href="/signUp" className="text-blue-500">
+              <Link href="/auth/signUp" className="text-blue-500">
                 Sign up
               </Link>
             </span>
