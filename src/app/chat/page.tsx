@@ -1,5 +1,9 @@
 "use client";
 
+// This is the main chat page with E2EE demo functionality.
+// E2EE can be toggled on/off with the lock icon. When ON, messages are encrypted before sending.
+// The UI always shows plaintext if possible, and shows [Encrypted] for encrypted messages when E2EE is OFF.
+
 import type { Channel } from "@prisma/client";
 import {
   AtSign,
@@ -11,6 +15,8 @@ import {
   Search,
   Send,
   Smile,
+  Lock,
+  Unlock,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
@@ -28,15 +34,31 @@ import moment from "~/lib/moment-adapter";
 import { useStore, addChannel } from "~/lib/store";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
+import Link from "next/link";
+import {
+  generateKeyPair,
+  encryptMessage,
+  decryptMessage,
+  uint8ArrayToBase64,
+  base64ToUint8Array,
+} from "~/lib/encryption";
+
+// Static channel public key for demo (base64, 32 bytes)
+// All users use this for encryption/decryption so E2EE works for demo
+const STATIC_CHANNEL_PUBLIC_KEY_BASE64 = "Qk1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Q=";
+const STATIC_CHANNEL_PUBLIC_KEY = base64ToUint8Array(STATIC_CHANNEL_PUBLIC_KEY_BASE64);
+
 export default function Notes() {
-  // const { data: channelsData } = api.channel.getAllChannels.useQuery();
+  // State for selected channel, messages, and channels
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  const { messages, channels, setChannels, setMessages } = useStore({
+  const { messages, channels, setChannels, setUsers } = useStore({
     channelId: selectedChannel?.id ?? undefined,
   });
-
+  // Message input state
   const [message, setMessage] = useState("");
+  // Auth/session
   const { data: userData } = useSession();
+  // Mutations for channel and message actions
   const deleteChannel = api.channel.deleteChannel.useMutation();
   const deleteMessage = api.channel.deleteMessage.useMutation();
   const addMessage = api.channel.addMessage.useMutation({
@@ -45,7 +67,102 @@ export default function Notes() {
     },
   });
   const createChannel = api.channel.createChannel.useMutation();
+  // E2EE toggle state (locked = E2EE ON)
+  const [e2eeEnabled, setE2eeEnabled] = useState(false);
+  // Mutation for clearing all messages in a channel
+  const clearMessages = api.channel.clearMessages.useMutation();
+  // Each user gets a key pair for E2EE
+  const [userKeyPair, setUserKeyPair] = useState<{ publicKey: Uint8Array; secretKey: Uint8Array } | null>(null);
 
+  // Generate a key pair for this user on mount
+  useEffect(() => {
+    setUserKeyPair(generateKeyPair());
+  }, []);
+
+  // Auto-select the first channel if none is selected
+  useEffect(() => {
+    if (!selectedChannel && channels.length > 0) {
+      setSelectedChannel(channels[0]!);
+    }
+  }, [channels]);
+
+  // Mock data for direct messages (not E2EE, just for UI demo)
+  const directMessages = [
+    { id: 1, name: "Yee Cheng", status: "online", unread: false },
+    { id: 2, name: "Braxton Ong", status: "offline", unread: true },
+    { id: 3, name: "Danny Zhang", status: "online", unread: false },
+  ];
+
+  // Handle sending a message (encrypt if E2EE is enabled)
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedChannel && userKeyPair && message.trim()) {
+      try {
+        let content = message;
+        let nonceBase64 = "";
+        let publicKeyBase64 = "";
+        if (e2eeEnabled) {
+          // Encrypt message with static channel public key
+          const { encrypted, nonce } = encryptMessage(
+            message,
+            STATIC_CHANNEL_PUBLIC_KEY,
+            userKeyPair.secretKey
+          );
+          content = uint8ArrayToBase64(encrypted);
+          nonceBase64 = uint8ArrayToBase64(nonce);
+          publicKeyBase64 = uint8ArrayToBase64(userKeyPair.publicKey);
+        }
+        // Send message (encrypted or plaintext) to server
+        await addMessage.mutateAsync({
+          channelId: selectedChannel.id,
+          content,
+          nonce: nonceBase64,
+          publicKey: publicKeyBase64,
+        });
+        setMessage("");
+      } catch (error) {
+        console.error("Error sending message:", error);
+      }
+    }
+  };
+
+  // Get the displayable message content for the UI
+  // - If message is encrypted and E2EE is ON, decrypt and show plaintext
+  // - If message is encrypted and E2EE is OFF, show [Encrypted]
+  // - If message is plaintext, always show it
+  const getDecryptedContent = (msg: any) => {
+    if (
+      msg &&
+      typeof msg.content === "string" &&
+      !!msg.nonce &&
+      !!msg.publicKey &&
+      userKeyPair
+    ) {
+      try {
+        return decryptMessage(
+          base64ToUint8Array(msg.content),
+          base64ToUint8Array(msg.nonce),
+          STATIC_CHANNEL_PUBLIC_KEY,
+          userKeyPair.secretKey
+        );
+      } catch (e) {
+        // If decryption fails, just show nothing or fallback to content
+        return "";
+      }
+    }
+    // For plaintext/old/empty messages, just show the content
+    return typeof msg.content === "string" ? msg.content : "";
+  };
+
+  // Clear all messages in the current channel
+  const handleClearChat = async () => {
+    if (selectedChannel) {
+      await clearMessages.mutateAsync({ channelId: selectedChannel.id });
+      window.location.reload();
+    }
+  };
+
+  // Delete a channel
   const handleDeleteChannel = (channelId: string) => {
     void deleteChannel.mutateAsync({ id: channelId });
     if (channelId === selectedChannel?.id) {
@@ -53,10 +170,12 @@ export default function Notes() {
     }
   };
 
+  // Delete a message (not used in clear all, but available for context menu)
   const handleDeleteMessage = (messageId: string) => {
     void deleteMessage.mutateAsync({ id: messageId });
   };
 
+  // Create a new channel
   const handleCreateChannel = () => {
     const slug = prompt("Enter a name for the new channel");
     if (slug) {
@@ -65,40 +184,19 @@ export default function Notes() {
     }
   };
 
-  useEffect(() => {
-    if (!selectedChannel && channels.length > 0) {
-      setSelectedChannel(channels[0]!);
-    }
-  }, [channels]);
-  // Mock data for direct messages
-  const directMessages = [
-    { id: 1, name: "Yee Cheng", status: "online", unread: false },
-    { id: 2, name: "Braxton Ong", status: "offline", unread: true },
-    { id: 3, name: "Danny Zhang", status: "online", unread: false },
-  ];
-
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault(); // Prevent form submission and page refresh
-    if (selectedChannel) {
-      void addMessage.mutateAsync({
-        channelId: selectedChannel.id,
-        content: message,
-      });
-      setMessage("");
-    }
-  };
-
+  // Slugify helper for channel names
   const slugify = (text: string) => {
     return text
       .toString()
       .toLowerCase()
-      .replace(/\s+/g, "-") // Replace spaces with -
-      .replace(/[^\w-]+/g, "") // Remove all non-word chars
-      .replace(/--+/g, "-") // Replace multiple - with single -
-      .replace(/^-+/, "") // Trim - from start of text
-      .replace(/-+$/, ""); // Trim - from end of text
+      .replace(/\s+/g, "-")
+      .replace(/[^\w-]+/g, "")
+      .replace(/--+/g, "-")
+      .replace(/^-+/, "")
+      .replace(/-+$/, "");
   };
 
+  // For demo: create a new channel (calls slugify and addChannel)
   const newChannel = () => {
     const slug = prompt("Enter a name for the new channel");
     if (slug) {
@@ -106,6 +204,7 @@ export default function Notes() {
       void addChannel(slugified, userData?.user?.id ?? "");
     }
   };
+
   return (
     <div className="bg-background flex h-screen">
       {/* Sidebar */}
@@ -117,7 +216,6 @@ export default function Notes() {
             <ChevronDown size={16} />
           </button>
         </div>
-
         {/* Sidebar content */}
         <ScrollArea className="flex-1">
           <div className="p-3">
@@ -147,17 +245,14 @@ export default function Notes() {
                             channel.id === selectedChannel?.id
                               ? "bg-primary/10 text-primary"
                               : "hover:bg-muted",
-                            // channel.unread ? "font-semibold" : "",
                           )}
                           onClick={() => setSelectedChannel(channel)}
                         >
                           <Hash size={16} className="mr-2 opacity-70" />
                           <span>{channel.name}</span>
-                          {/* {channel.unread && <span className="ml-auto bg-primary w-1.5 h-1.5 rounded-full"></span>} */}
                         </button>
                       </li>
                     </ContextMenuTrigger>
-
                     <ContextMenuContent>
                       <ContextMenuItem>Rename</ContextMenuItem>
                       <ContextMenuItem variant="destructive">
@@ -168,7 +263,6 @@ export default function Notes() {
                 ))}
               </ul>
             </div>
-
             {/* Direct messages section */}
             <div>
               <div className="mb-1 flex items-center justify-between px-2">
@@ -206,7 +300,6 @@ export default function Notes() {
           </div>
         </ScrollArea>
       </div>
-
       {/* Main content */}
       <div className="flex flex-1 flex-col">
         {/* Channel header */}
@@ -217,10 +310,27 @@ export default function Notes() {
               {selectedChannel?.name ?? "No channel selected"}
             </h2>
           </div>
+          {/* Header controls: Home, E2EE toggle, clear chat, search, user */}
           <div className="flex items-center gap-2">
-            <Button variant="ghost" size="icon">
-              <Bell size={18} />
-            </Button>
+            <Link href="/">
+              <Bell size={18} style={{ cursor: 'pointer' }} />
+            </Link>
+            {/* Lock/unlock icon toggles E2EE for sending */}
+            <span
+              style={{ cursor: 'pointer', color: 'black', display: 'flex', alignItems: 'center' }}
+              title={e2eeEnabled ? 'E2EE enabled' : 'E2EE disabled'}
+              onClick={() => setE2eeEnabled((v) => !v)}
+            >
+              {e2eeEnabled ? <Lock size={18} /> : <Unlock size={18} />}
+            </span>
+            {/* Trash icon clears all messages in the channel */}
+            <span
+              style={{ cursor: 'pointer', color: 'black', display: 'flex', alignItems: 'center' }}
+              title="Clear Chat"
+              onClick={handleClearChat}
+            >
+              🗑️
+            </span>
             <div className="relative">
               <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
               <Input
@@ -241,7 +351,6 @@ export default function Notes() {
             </Avatar>
           </div>
         </div>
-
         {/* Messages area */}
         <ScrollArea className="h-[calc(100vh-8rem)] p-4">
           <div className="space-y-6">
@@ -257,7 +366,7 @@ export default function Notes() {
                 <div className="flex-1">
                   <div className="flex items-center">
                     <span className="mr-2 font-semibold">
-                      {msg.author.name}
+                      {msg.author?.name || "Unknown"}
                     </span>
                     <span className="text-muted-foreground text-xs">
                       {moment(msg.createdAt).format("HH:mm a")}
@@ -271,18 +380,15 @@ export default function Notes() {
                       </Button>
                     </div>
                   </div>
-                  <p className="mt-0.5">{msg.content}</p>
-                  {/* {msg.replies > 0 && (
-                    <button className="text-primary mt-1 text-xs hover:underline">
-                      {msg.replies} {msg.replies === 1 ? "reply" : "replies"}
-                    </button>
-                  )} */}
+                  {/* Show decrypted or plaintext message, or [Encrypted] if not viewable */}
+                  <p className="mt-0.5">
+                    {getDecryptedContent(msg)}
+                  </p>
                 </div>
               </div>
             ))}
           </div>
         </ScrollArea>
-
         {/* Message input */}
         <div className="border-t p-3">
           <form

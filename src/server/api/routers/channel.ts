@@ -48,19 +48,21 @@ export const channelRouter = createTRPCRouter({
       z.object({
         channelId: z.string(),
         content: z.string(),
+        nonce: z.string(),
+        publicKey: z.string(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
-      console.log(input);
       try {
         const message = await ctx.db.message.create({
           data: {
             content: input.content,
+            nonce: input.nonce,
+            publicKey: input.publicKey,
             channelId: input.channelId,
             userId: ctx.session?.user.id,
           },
         });
-        console.log(message);
         return message;
       } catch (error) {
         console.error(error);
@@ -79,5 +81,12 @@ export const channelRouter = createTRPCRouter({
         where: { id: input.id },
       });
       return message;
+    }),
+
+  clearMessages: protectedProcedure
+    .input(z.object({ channelId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.message.deleteMany({ where: { channelId: input.channelId } });
+      return { success: true };
     }),
 });
