@@ -11,12 +11,19 @@ export const supabase = createClient(
 );
 
 /**
+ * E2EE key storage note:
+ * In this demo, each user's E2EE key pair is generated and stored in-memory (React state) per session.
+ * The keys are NOT persisted to the database or localStorage. If you reload the page, a new key pair is generated.
+ * In a real-world app, you would want to persist the user's private key securely (e.g., in localStorage or via a secure key management system).
+ */
+
+/**
  * @param {string} channelId the currently selected Channel
  */
 export const useStore = ({ channelId }: { channelId?: string }) => {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [users] = useState(new Map());
+  const [users, setUsers] = useState(new Map());
   const [newMessage, handleNewMessage] = useState<Message | null>(null);
   const [newChannel, handleNewChannel] = useState<Channel | null>(null);
   const [newOrUpdatedUser, handleNewOrUpdatedUser] = useState<User | null>(
@@ -81,7 +88,15 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
   // Update when the route changes
   useEffect(() => {
     if (channelId) {
-      void fetchMessages(channelId, (messages) => {
+      void fetchMessages(channelId, async (messages) => {
+        // For each message, ensure the user is in the users map
+        await Promise.all(
+          messages.map(async (x: any) => {
+            if (!users.get(x.userId)) {
+              await fetchUser(x.userId, (user) => users.set(user.id, user));
+            }
+          })
+        );
         messages.forEach((x: any) => users.set(x.userId, x.user));
         setMessages(messages);
       });
@@ -156,6 +171,7 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
     setChannels,
     setMessages,
     users,
+    setUsers, // expose setUsers so it can be used to clear users map after clearing messages
   };
 };
 
@@ -173,23 +189,17 @@ export const fetchChannels = async (setState: (value: any) => void) => {
   }
 };
 
-/**
- * Fetch a single user
- * @param {number} userId
- * @param {function} setState Optionally pass in a hook or callback to set the state
- */
-export const fetchUser = async (
-  userId: string,
-  setState: (value: any) => void,
-) => {
+// Helper to fetch a user by ID and update the users map
+export const fetchUser = async (userId: string, setUser: (user: User) => void) => {
   try {
-    const { data } = await supabase.from("User").select(`*`).eq("id", userId);
-    if (!data) return null;
-    const user = data[0];
-    if (setState) setState(user);
-    return user;
+    const { data } = await supabase
+      .from("User")
+      .select("*")
+      .eq("id", userId)
+      .single();
+    if (data) setUser(data);
   } catch (error) {
-    console.log("error", error);
+    console.log("error fetching user", error);
   }
 };
 
