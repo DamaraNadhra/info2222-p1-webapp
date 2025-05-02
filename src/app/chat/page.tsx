@@ -366,7 +366,7 @@ export default function Notes() {
                 <div className="flex-1">
                   <div className="flex items-center">
                     <span className="mr-2 font-semibold">
-                      {msg.author?.name || "Unknown"}
+                      {msg.author?.name ?? "Unknown"}
                     </span>
                     <span className="text-muted-foreground text-xs">
                       {moment(msg.createdAt).format("HH:mm a")}

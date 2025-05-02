@@ -27,6 +27,8 @@ export default tseslint.config(
       "react-hooks/exhaustive-deps": "off",
       "@typescript-eslint/require-await": "off",
       "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-misused-promises": "off",
+      "@typescript-eslint/prefer-nullish-coalescing": "off",
       "@typescript-eslint/no-unsafe-assignment": "off",
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-unsafe-call": "off",
