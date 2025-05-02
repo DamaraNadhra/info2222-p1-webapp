@@ -74,9 +74,66 @@ export default function Notes() {
   // Each user gets a key pair for E2EE
   const [userKeyPair, setUserKeyPair] = useState<{ publicKey: Uint8Array; secretKey: Uint8Array } | null>(null);
 
+  // Function to store decrypted messages
+  const storeDecryptedMessage = (msgId: string, plaintext: string) => {
+    console.log('Storing decrypted message:', { msgId, plaintext });
+    localStorage.setItem(`msg_${msgId}`, plaintext);
+  };
+
+  // Function to store successful decryption key pair
+  const storeSuccessfulKeyPair = (msgId: string, publicKey: string, secretKey: string) => {
+    localStorage.setItem(`keypair_${msgId}`, JSON.stringify({ publicKey, secretKey }));
+  };
+
+  // Function to get stored key pair for a message
+  const getStoredKeyPair = (msgId: string) => {
+    const stored = localStorage.getItem(`keypair_${msgId}`);
+    if (stored) {
+      try {
+        const { publicKey, secretKey } = JSON.parse(stored);
+        return {
+          publicKey: base64ToUint8Array(publicKey),
+          secretKey: base64ToUint8Array(secretKey)
+        };
+      } catch (e) {
+        console.error('Failed to parse stored key pair:', e);
+      }
+    }
+    return null;
+  };
+
   // Generate a key pair for this user on mount
   useEffect(() => {
-    setUserKeyPair(generateKeyPair());
+    // Try to load existing key pair from sessionStorage
+    const storedKeyPair = sessionStorage.getItem('userKeyPair');
+    if (storedKeyPair) {
+      try {
+        const parsed = JSON.parse(storedKeyPair);
+        setUserKeyPair({
+          publicKey: base64ToUint8Array(parsed.publicKey),
+          secretKey: base64ToUint8Array(parsed.secretKey)
+        });
+      } catch (e) {
+        console.error('Failed to parse stored key pair:', e);
+        // If parsing fails, generate new keys
+        const newKeyPair = generateKeyPair();
+        setUserKeyPair(newKeyPair);
+        // Store the new key pair
+        sessionStorage.setItem('userKeyPair', JSON.stringify({
+          publicKey: uint8ArrayToBase64(newKeyPair.publicKey),
+          secretKey: uint8ArrayToBase64(newKeyPair.secretKey)
+        }));
+      }
+    } else {
+      // No stored key pair, generate new one
+      const newKeyPair = generateKeyPair();
+      setUserKeyPair(newKeyPair);
+      // Store the new key pair
+      sessionStorage.setItem('userKeyPair', JSON.stringify({
+        publicKey: uint8ArrayToBase64(newKeyPair.publicKey),
+        secretKey: uint8ArrayToBase64(newKeyPair.secretKey)
+      }));
+    }
   }, []);
 
   // Auto-select the first channel if none is selected
@@ -93,70 +150,117 @@ export default function Notes() {
     { id: 3, name: "Danny Zhang", status: "online", unread: false },
   ];
 
-  // Handle sending a message (encrypt if E2EE is enabled)
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (selectedChannel && userKeyPair && message.trim()) {
-      try {
-        let content = message;
-        let nonceBase64 = "";
-        let publicKeyBase64 = "";
-        if (e2eeEnabled) {
-          // Encrypt message with static channel public key
-          const { encrypted, nonce } = encryptMessage(
-            message,
-            STATIC_CHANNEL_PUBLIC_KEY,
-            userKeyPair.secretKey
-          );
-          content = uint8ArrayToBase64(encrypted);
-          nonceBase64 = uint8ArrayToBase64(nonce);
-          publicKeyBase64 = uint8ArrayToBase64(userKeyPair.publicKey);
-        }
-        // Send message (encrypted or plaintext) to server
-        await addMessage.mutateAsync({
-          channelId: selectedChannel.id,
-          content,
-          nonce: nonceBase64,
-          publicKey: publicKeyBase64,
-        });
-        setMessage("");
-      } catch (error) {
-        console.error("Error sending message:", error);
-      }
-    }
-  };
-
   // Get the displayable message content for the UI
-  // - If message is encrypted and E2EE is ON, decrypt and show plaintext
-  // - If message is encrypted and E2EE is OFF, show [Encrypted]
-  // - If message is plaintext, always show it
   const getDecryptedContent = (msg: any) => {
-    if (
-      msg &&
-      typeof msg.content === "string" &&
-      !!msg.nonce &&
-      !!msg.publicKey &&
-      userKeyPair
-    ) {
+    if (!msg || typeof msg.content !== "string") {
+      return "";
+    }
+
+    console.log('Processing message:', { 
+      id: msg.id, 
+      content: msg.content,
+      nonce: msg.nonce,
+      publicKey: msg.publicKey,
+      e2eeEnabled
+    });
+
+    // First check if we have stored plaintext for this message in localStorage
+    const storedPlaintext = localStorage.getItem(`msg_${msg.id}`);
+    console.log('Stored plaintext:', storedPlaintext);
+    
+    if (storedPlaintext) {
+      console.log('Returning stored plaintext');
+      return storedPlaintext;
+    }
+
+    // If we don't have stored plaintext and E2EE is enabled, try to decrypt
+    if (e2eeEnabled && userKeyPair && msg.nonce && msg.publicKey) {
+      console.log('Attempting decryption with current key pair');
       try {
-        return decryptMessage(
+        const decrypted = decryptMessage(
           base64ToUint8Array(msg.content),
           base64ToUint8Array(msg.nonce),
           STATIC_CHANNEL_PUBLIC_KEY,
           userKeyPair.secretKey
         );
+        console.log('Decryption successful:', decrypted);
+        // Store the decrypted message in localStorage
+        storeDecryptedMessage(msg.id, decrypted);
+        return decrypted;
       } catch (e) {
-        // If decryption fails, just show nothing or fallback to content
-        return "";
+        console.error('Decryption failed:', e);
+        // If decryption fails, just show the content as is
+        return msg.content;
       }
     }
-    // For plaintext/old/empty messages, just show the content
-    return typeof msg.content === "string" ? msg.content : "";
+
+    console.log('Returning original content');
+    return msg.content;
   };
 
-  // Clear all messages in the current channel
+  // Handle sending a message (encrypt if E2EE is enabled)
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedChannel) {
+      console.error('No channel selected');
+      return;
+    }
+    if (!userKeyPair) {
+      console.error('No key pair available');
+      return;
+    }
+    if (!message.trim()) {
+      console.error('Message is empty');
+      return;
+    }
+
+    console.log('Sending message:', { message, e2eeEnabled });
+
+    try {
+      let content = message;
+      let nonceBase64 = "";
+      let publicKeyBase64 = "";
+      
+      if (e2eeEnabled) {
+        console.log('Encrypting message');
+        // Encrypt message with static channel public key
+        const { encrypted, nonce } = encryptMessage(
+          message,
+          STATIC_CHANNEL_PUBLIC_KEY,
+          userKeyPair.secretKey
+        );
+        content = uint8ArrayToBase64(encrypted);
+        nonceBase64 = uint8ArrayToBase64(nonce);
+        publicKeyBase64 = uint8ArrayToBase64(userKeyPair.publicKey);
+        console.log('Encryption complete:', { content, nonceBase64, publicKeyBase64 });
+      }
+
+      // Send message (encrypted or plaintext) to server
+      const result = await addMessage.mutateAsync({
+        channelId: selectedChannel.id,
+        content,
+        nonce: nonceBase64,
+        publicKey: publicKeyBase64,
+      });
+
+      if (result) {
+        console.log('Message sent, storing plaintext:', message);
+        // Store the plaintext in localStorage
+        storeDecryptedMessage(result.id, message);
+        setMessage("");
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  };
+
+  // Clear stored messages when clearing chat
   const handleClearChat = async () => {
     if (selectedChannel) {
+      // Clear stored messages for this channel from localStorage
+      messages.forEach(msg => {
+        localStorage.removeItem(`msg_${msg.id}`);
+      });
       await clearMessages.mutateAsync({ channelId: selectedChannel.id });
       window.location.reload();
     }
