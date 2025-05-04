@@ -14,7 +14,7 @@ import {
 } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
-import { EyeIcon, EyeOffIcon } from "lucide-react";
+import { EyeIcon, EyeOffIcon, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { signIn } from "next-auth/react";
 import { toast } from "react-hot-toast";
@@ -28,7 +28,6 @@ export default function SignupForm() {
   const registerMutation = api.user.registerUser.useMutation({
     onSuccess: () => {
       setSignUpLoading(false);
-      toast.success("Account created successfully");
       void signIn("credentials", {
         email,
         password,
@@ -44,7 +43,14 @@ export default function SignupForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSignUpLoading(true);
-    await registerMutation.mutateAsync({ email, password, name });
+    await toast.promise(
+      registerMutation.mutateAsync({ email, password, name }),
+      {
+        loading: "Creating account...",
+        success: "Account created successfully",
+        error: "Failed to create account",
+      },
+    );
   };
 
   return (
@@ -93,6 +99,7 @@ export default function SignupForm() {
                   required
                 />
                 <button
+                  type="button"
                   className="hover:bg absolute top-0 right-0 h-full cursor-pointer px-3 py-2 text-gray-400 hover:text-gray-600"
                   onClick={() => setShowPassword(!showPassword)}
                 >
@@ -109,8 +116,15 @@ export default function SignupForm() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-2">
-            <Button type="submit" className="mt-5 w-full">
-              Sign up
+            <Button
+              type="submit"
+              className="mt-5 w-full"
+              disabled={signUpLoading}
+            >
+              {signUpLoading && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
+              {signUpLoading ? "Signing up..." : "Sign up"}
             </Button>
             <span className="w-full text-start text-sm">
               Already have an account?{" "}

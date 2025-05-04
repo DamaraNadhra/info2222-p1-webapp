@@ -128,7 +128,7 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
   // Deleted message received from postgres
   useEffect(() => {
     if (deletedMessage) {
-      console.log(deletedMessage);
+      console.log("deletedMessage", deletedMessage);
       setMessages(
         messages.filter((message: Message) => message.id !== deletedMessage.id),
       );

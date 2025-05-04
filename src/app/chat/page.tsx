@@ -21,6 +21,7 @@ import {
   Unlock,
   Trash,
   Loader2,
+  UserRound,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
@@ -41,26 +42,33 @@ import { api } from "~/trpc/react";
 import TooltipComponent from "~/components/TooltipComponent";
 import MessageBubble from "~/components/MessageBubble";
 import toast from "react-hot-toast";
+import ClearingChatDialog from "~/components/ClearingChatDialog";
+import CreateChannelDialog from "~/components/CreateChannelDialog";
 
 export default function Chat() {
   // State for selected channel, messages, and channels
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
-  const { messages, channels, setChannels, setUsers } = useStore({
+  const { messages, channels, setChannels, setUsers, setMessages } = useStore({
     channelId: selectedChannel?.id ?? undefined,
   });
   const [isJoiningChannel, setIsJoiningChannel] = useState<boolean>(false);
+  const [clearingChatDialogOpen, setClearingChatDialogOpen] =
+    useState<boolean>(false);
+  const [createChannelDialogOpen, setCreateChannelDialogOpen] =
+    useState<boolean>(false);
   // Message input state
   const [message, setMessage] = useState("");
   // Auth/session
 
-  const { data: userData } = api.user.getUserData.useQuery(
-    {
-      channelId: selectedChannel?.id ?? "",
-    },
-    {
-      enabled: !!selectedChannel,
-    },
-  );
+  const { data: userData, isLoading: isUserDataLoading } =
+    api.user.getUserData.useQuery(
+      {
+        channelId: selectedChannel?.id ?? "",
+      },
+      {
+        enabled: !!selectedChannel,
+      },
+    );
   const { data: sessionData } = useSession();
   const ctx = api.useUtils();
   // Mutations for channel and message actions
@@ -74,7 +82,6 @@ export default function Chat() {
     },
     onMutate: () => {
       setIsJoiningChannel(true);
-      toast.loading("Joining channel...");
     },
   });
   const addMessage = api.channel.addMessage.useMutation({
@@ -82,10 +89,18 @@ export default function Chat() {
       console.error(error);
     },
   });
-  const createChannel = api.channel.createChannel.useMutation();
+  const createChannel = api.channel.createChannel.useMutation({
+    onSuccess: (channel) => {
+      setSelectedChannel(channel);
+    },
+  });
   const [channelKey, setChannelKey] = useState<string | null>(null);
   // Mutation for clearing all messages in a channel
-  const clearMessages = api.channel.clearMessages.useMutation();
+  const clearMessages = api.channel.clearMessages.useMutation({
+    onSuccess: () => {
+      setMessages([]);
+    },
+  });
   // Auto-select the first channel if none is selected
   useEffect(() => {
     if (!selectedChannel && channels.length > 0) {
@@ -153,7 +168,7 @@ export default function Chat() {
       console.error("No channel key available");
       return;
     }
-
+    setMessage("");
     try {
       const messageNonce = sodium.randombytes_buf(
         sodium.crypto_secretbox_NONCEBYTES,
@@ -176,18 +191,20 @@ export default function Chat() {
     } catch (error) {
       console.error("Error sending message:", error);
     }
-    setMessage("");
   };
 
   // Clear stored messages when clearing chat
   const handleClearChat = async () => {
     if (selectedChannel) {
-      // Clear stored messages for this channel from localStorage
-      messages.forEach((msg) => {
-        localStorage.removeItem(`msg_${msg.id}`);
-      });
-      await clearMessages.mutateAsync({ channelId: selectedChannel.id });
-      window.location.reload();
+      await toast.promise(
+        clearMessages.mutateAsync({ channelId: selectedChannel.id }),
+        {
+          loading: "Clearing chat...",
+          success: "Chat cleared",
+          error: "Error clearing chat",
+        },
+      );
+      void ctx.user.getUserData.invalidate();
     }
   };
 
@@ -204,16 +221,6 @@ export default function Chat() {
     void deleteMessage.mutateAsync({ id: messageId });
   };
 
-  // Create a new channel
-  const handleCreateChannel = () => {
-    const slug = prompt("Enter a name for the new channel");
-    if (slug) {
-      const slugified = slugify(slug);
-      void createChannel.mutateAsync({ slug: slugified });
-    }
-  };
-
-  // Slugify helper for channel names
   const slugify = (text: string) => {
     return text
       .toString()
@@ -223,6 +230,16 @@ export default function Chat() {
       .replace(/--+/g, "-")
       .replace(/^-+/, "")
       .replace(/-+$/, "");
+  };
+
+  // Create a new channel
+  const handleCreateChannel = async (channelName: string) => {
+    const slugified = slugify(channelName);
+    await toast.promise(createChannel.mutateAsync({ slug: slugified }), {
+      loading: "Creating channel...",
+      success: "Channel created",
+      error: "Error creating channel",
+    });
   };
 
   // For demo: create a new channel (calls slugify and addChannel)
@@ -258,7 +275,7 @@ export default function Chat() {
                   variant="ghost"
                   size="icon"
                   className="h-5 w-5"
-                  onClick={handleCreateChannel}
+                  onClick={() => setCreateChannelDialogOpen(true)}
                 >
                   <Plus size={14} />
                 </Button>
@@ -341,16 +358,15 @@ export default function Chat() {
           </div>
           {/* Header controls: Home, E2EE toggle, clear chat, search, user */}
           <div className="flex items-center gap-2">
-            {/* Lock/unlock icon toggles E2EE for sending */}
-
             {/* Trash icon clears all messages in the channel */}
             <TooltipComponent content="Clear Chat">
-              <div
-                className="hover:bg-muted cursor-pointer rounded-full p-2"
-                onClick={handleClearChat}
+              <button
+                disabled={messages.length === 0}
+                className="hover:bg-muted cursor-pointer rounded-full p-2 disabled:cursor-not-allowed disabled:opacity-50"
+                onClick={() => setClearingChatDialogOpen(true)}
               >
                 <Trash size={18} />
-              </div>
+              </button>
             </TooltipComponent>
             <div className="relative">
               <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
@@ -360,7 +376,11 @@ export default function Chat() {
                 className="h-9 w-48 pl-8"
               />
             </div>
-            <Button variant="ghost" size="icon" onClick={() => toast.success("Not implemented")}>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => toast.success("Not implemented")}
+            >
               <AtSign size={18} />
             </Button>
             <Avatar className="h-8 w-8">
@@ -372,7 +392,12 @@ export default function Chat() {
             </Avatar>
           </div>
         </div>
-        {channelKey ? (
+        {isUserDataLoading ? (
+          <div className="text-muted-foreground flex h-[calc(100vh-8rem)] items-center justify-center gap-2">
+            <Loader2 className="h-8 w-8 animate-spin" />
+            <p>Loading message history...</p>
+          </div>
+        ) : channelKey ? (
           <>
             <ScrollArea className="h-[calc(100vh-8rem)] p-4">
               <div className="space-y-6">
@@ -442,9 +467,19 @@ export default function Chat() {
                 </Button>
               </form>
             </div>
+            <ClearingChatDialog
+              isOpen={clearingChatDialogOpen}
+              onOpenChange={setClearingChatDialogOpen}
+              handleClearChat={handleClearChat}
+            />
+            <CreateChannelDialog
+              isOpen={createChannelDialogOpen}
+              onOpenChange={setCreateChannelDialogOpen}
+              handleCreateChannel={handleCreateChannel}
+            />
           </>
         ) : (
-          <div className="flex h-[calc(100vh-8rem)] items-center justify-center flex-col gap-2 transition-colors">
+          <div className="flex h-[calc(100vh-8rem)] flex-col items-center justify-center gap-2 transition-colors">
             <p className="text-muted-foreground">
               You have to join this channel in order to view messages.
             </p>
@@ -458,7 +493,9 @@ export default function Chat() {
                 });
               }}
             >
-              {isJoiningChannel && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isJoiningChannel && (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              )}
               {isJoiningChannel ? "Joining..." : "Join Channel"}
             </Button>
           </div>
