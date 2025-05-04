@@ -2,6 +2,9 @@
 import type { PrismaClient } from "@prisma/client";
 import { compare, genSalt, hash } from "bcryptjs";
 import { TRPCError } from "@trpc/server";
+import sodium from "libsodium-wrappers";
+import { generateKeyPair } from "./encryption";
+await sodium.ready;
 
 export class AuthHelper {
   constructor(private prisma: PrismaClient) {}
@@ -15,7 +18,6 @@ export class AuthHelper {
     if (!credentials) {
       return null;
     }
-    console.log("credentials", credentials);
     const user = await this.prisma.user.findFirst({
       where: {
         email: {
@@ -59,12 +61,16 @@ export class AuthHelper {
       ? await hash(input.password, salt)
       : null;
 
+    const keyPair = sodium.crypto_box_keypair();
+
     const newUser = await this.prisma.user.create({
       data: {
         email: email,
         image: input.image,
         password: hashedPassword,
         name: input.name,
+        publicKey: sodium.to_base64(keyPair.publicKey),
+        privateKey: sodium.to_base64(keyPair.privateKey),
       },
     });
     return newUser;

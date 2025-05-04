@@ -5,6 +5,8 @@
 // The UI always shows plaintext if possible, and shows [Encrypted] for encrypted messages when E2EE is OFF.
 
 import type { Channel } from "@prisma/client";
+import sodium from "libsodium-wrappers";
+await sodium.ready;
 import {
   AtSign,
   Bell,
@@ -17,6 +19,7 @@ import {
   Smile,
   Lock,
   Unlock,
+  Trash,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
@@ -34,21 +37,10 @@ import moment from "~/lib/moment-adapter";
 import { useStore, addChannel } from "~/lib/store";
 import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
-import Link from "next/link";
-import {
-  generateKeyPair,
-  encryptMessage,
-  decryptMessage,
-  uint8ArrayToBase64,
-  base64ToUint8Array,
-} from "~/lib/encryption";
+import TooltipComponent from "~/components/TooltipComponent";
+import MessageBubble from "~/components/MessageBubble";
 
-// Static channel public key for demo (base64, 32 bytes)
-// All users use this for encryption/decryption so E2EE works for demo
-const STATIC_CHANNEL_PUBLIC_KEY_BASE64 = "Qk1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Qw1Q=";
-const STATIC_CHANNEL_PUBLIC_KEY = base64ToUint8Array(STATIC_CHANNEL_PUBLIC_KEY_BASE64);
-
-export default function Notes() {
+export default function Chat() {
   // State for selected channel, messages, and channels
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const { messages, channels, setChannels, setUsers } = useStore({
@@ -57,7 +49,16 @@ export default function Notes() {
   // Message input state
   const [message, setMessage] = useState("");
   // Auth/session
-  const { data: userData } = useSession();
+
+  const { data: userData } = api.user.getUserData.useQuery(
+    {
+      channelId: selectedChannel?.id ?? "",
+    },
+    {
+      enabled: !!selectedChannel,
+    },
+  );
+  const { data: sessionData } = useSession();
   // Mutations for channel and message actions
   const deleteChannel = api.channel.deleteChannel.useMutation();
   const deleteMessage = api.channel.deleteMessage.useMutation();
@@ -67,81 +68,30 @@ export default function Notes() {
     },
   });
   const createChannel = api.channel.createChannel.useMutation();
-  // E2EE toggle state (locked = E2EE ON)
-  const [e2eeEnabled, setE2eeEnabled] = useState(false);
+  const [channelKey, setChannelKey] = useState<string | null>(null);
   // Mutation for clearing all messages in a channel
   const clearMessages = api.channel.clearMessages.useMutation();
-  // Each user gets a key pair for E2EE
-  const [userKeyPair, setUserKeyPair] = useState<{ publicKey: Uint8Array; secretKey: Uint8Array } | null>(null);
-
-  // Function to store decrypted messages
-  const storeDecryptedMessage = (msgId: string, plaintext: string) => {
-    console.log('Storing decrypted message:', { msgId, plaintext });
-    localStorage.setItem(`msg_${msgId}`, plaintext);
-  };
-
-  // Function to store successful decryption key pair
-  const storeSuccessfulKeyPair = (msgId: string, publicKey: string, secretKey: string) => {
-    localStorage.setItem(`keypair_${msgId}`, JSON.stringify({ publicKey, secretKey }));
-  };
-
-  // Function to get stored key pair for a message
-  const getStoredKeyPair = (msgId: string) => {
-    const stored = localStorage.getItem(`keypair_${msgId}`);
-    if (stored) {
-      try {
-        const { publicKey, secretKey } = JSON.parse(stored);
-        return {
-          publicKey: base64ToUint8Array(publicKey),
-          secretKey: base64ToUint8Array(secretKey)
-        };
-      } catch (e) {
-        console.error('Failed to parse stored key pair:', e);
-      }
-    }
-    return null;
-  };
-
-  // Generate a key pair for this user on mount
-  useEffect(() => {
-    // Try to load existing key pair from sessionStorage
-    const storedKeyPair = sessionStorage.getItem('userKeyPair');
-    if (storedKeyPair) {
-      try {
-        const parsed = JSON.parse(storedKeyPair);
-        setUserKeyPair({
-          publicKey: base64ToUint8Array(parsed.publicKey),
-          secretKey: base64ToUint8Array(parsed.secretKey)
-        });
-      } catch (e) {
-        console.error('Failed to parse stored key pair:', e);
-        // If parsing fails, generate new keys
-        const newKeyPair = generateKeyPair();
-        setUserKeyPair(newKeyPair);
-        // Store the new key pair
-        sessionStorage.setItem('userKeyPair', JSON.stringify({
-          publicKey: uint8ArrayToBase64(newKeyPair.publicKey),
-          secretKey: uint8ArrayToBase64(newKeyPair.secretKey)
-        }));
-      }
-    } else {
-      // No stored key pair, generate new one
-      const newKeyPair = generateKeyPair();
-      setUserKeyPair(newKeyPair);
-      // Store the new key pair
-      sessionStorage.setItem('userKeyPair', JSON.stringify({
-        publicKey: uint8ArrayToBase64(newKeyPair.publicKey),
-        secretKey: uint8ArrayToBase64(newKeyPair.secretKey)
-      }));
-    }
-  }, []);
-
   // Auto-select the first channel if none is selected
   useEffect(() => {
     if (!selectedChannel && channels.length > 0) {
       setSelectedChannel(channels[0]!);
     }
   }, [channels]);
+
+  useEffect(() => {
+    if (selectedChannel && userData) {
+      const currentChannel = channels.find(
+        (channel) => channel.id === selectedChannel?.id,
+      );
+      const decryptedGroupKey = sodium.crypto_box_open_easy(
+        sodium.from_base64(userData?.channels[0]?.encryptedKey as string),
+        sodium.from_base64(userData?.channels[0]?.nonce as string),
+        sodium.from_base64(currentChannel?.createdByUser?.publicKey as string),
+        sodium.from_base64(userData?.privateKey as string),
+      );
+      setChannelKey(sodium.to_base64(decryptedGroupKey));
+    }
+  }, [selectedChannel, userData]);
 
   // Mock data for direct messages (not E2EE, just for UI demo)
   const directMessages = [
@@ -156,45 +106,20 @@ export default function Notes() {
       return "";
     }
 
-    console.log('Processing message:', { 
-      id: msg.id, 
-      content: msg.content,
-      nonce: msg.nonce,
-      publicKey: msg.publicKey,
-      e2eeEnabled
-    });
-
-    // First check if we have stored plaintext for this message in localStorage
-    const storedPlaintext = localStorage.getItem(`msg_${msg.id}`);
-    console.log('Stored plaintext:', storedPlaintext);
-    
-    if (storedPlaintext) {
-      console.log('Returning stored plaintext');
-      return storedPlaintext;
-    }
-
-    // If we don't have stored plaintext and E2EE is enabled, try to decrypt
-    if (e2eeEnabled && userKeyPair && msg.nonce && msg.publicKey) {
-      console.log('Attempting decryption with current key pair');
+    if (channelKey) {
       try {
-        const decrypted = decryptMessage(
-          base64ToUint8Array(msg.content),
-          base64ToUint8Array(msg.nonce),
-          STATIC_CHANNEL_PUBLIC_KEY,
-          userKeyPair.secretKey
+        const decrypted = sodium.to_string(
+          sodium.crypto_secretbox_open_easy(
+            sodium.from_base64(msg.content),
+            sodium.from_base64(msg.nonce),
+            sodium.from_base64(channelKey),
+          ),
         );
-        console.log('Decryption successful:', decrypted);
-        // Store the decrypted message in localStorage
-        storeDecryptedMessage(msg.id, decrypted);
         return decrypted;
       } catch (e) {
-        console.error('Decryption failed:', e);
-        // If decryption fails, just show the content as is
         return msg.content;
       }
     }
-
-    console.log('Returning original content');
     return msg.content;
   };
 
@@ -202,63 +127,48 @@ export default function Notes() {
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedChannel) {
-      console.error('No channel selected');
-      return;
-    }
-    if (!userKeyPair) {
-      console.error('No key pair available');
+      console.error("No channel selected");
       return;
     }
     if (!message.trim()) {
-      console.error('Message is empty');
+      console.error("Message is empty");
+      return;
+    }
+    if (!channelKey) {
+      console.error("No channel key available");
       return;
     }
 
-    console.log('Sending message:', { message, e2eeEnabled });
-
     try {
-      let content = message;
-      let nonceBase64 = "";
-      let publicKeyBase64 = "";
-      
-      if (e2eeEnabled) {
-        console.log('Encrypting message');
-        // Encrypt message with static channel public key
-        const { encrypted, nonce } = encryptMessage(
-          message,
-          STATIC_CHANNEL_PUBLIC_KEY,
-          userKeyPair.secretKey
-        );
-        content = uint8ArrayToBase64(encrypted);
-        nonceBase64 = uint8ArrayToBase64(nonce);
-        publicKeyBase64 = uint8ArrayToBase64(userKeyPair.publicKey);
-        console.log('Encryption complete:', { content, nonceBase64, publicKeyBase64 });
-      }
+      const messageNonce = sodium.randombytes_buf(
+        sodium.crypto_secretbox_NONCEBYTES,
+      );
+      const ciphertext = sodium.crypto_secretbox_easy(
+        sodium.from_string(message),
+        messageNonce,
+        sodium.from_base64(channelKey),
+      );
+      const messageResult = {
+        content: sodium.to_base64(ciphertext),
+        nonce: sodium.to_base64(messageNonce),
+      };
 
       // Send message (encrypted or plaintext) to server
-      const result = await addMessage.mutateAsync({
+      await addMessage.mutateAsync({
         channelId: selectedChannel.id,
-        content,
-        nonce: nonceBase64,
-        publicKey: publicKeyBase64,
+        ...messageResult,
       });
-
-      if (result) {
-        console.log('Message sent, storing plaintext:', message);
-        // Store the plaintext in localStorage
-        storeDecryptedMessage(result.id, message);
-        setMessage("");
-      }
     } catch (error) {
       console.error("Error sending message:", error);
     }
+    setMessage("");
   };
 
   // Clear stored messages when clearing chat
   const handleClearChat = async () => {
     if (selectedChannel) {
       // Clear stored messages for this channel from localStorage
-      messages.forEach(msg => {
+      messages.forEach((msg) => {
         localStorage.removeItem(`msg_${msg.id}`);
       });
       await clearMessages.mutateAsync({ channelId: selectedChannel.id });
@@ -305,7 +215,7 @@ export default function Notes() {
     const slug = prompt("Enter a name for the new channel");
     if (slug) {
       const slugified = slugify(slug);
-      void addChannel(slugified, userData?.user?.id ?? "");
+      void addChannel(slugified, sessionData?.user?.id ?? "");
     }
   };
 
@@ -416,25 +326,17 @@ export default function Notes() {
           </div>
           {/* Header controls: Home, E2EE toggle, clear chat, search, user */}
           <div className="flex items-center gap-2">
-            <Link href="/">
-              <Bell size={18} style={{ cursor: 'pointer' }} />
-            </Link>
             {/* Lock/unlock icon toggles E2EE for sending */}
-            <span
-              style={{ cursor: 'pointer', color: 'black', display: 'flex', alignItems: 'center' }}
-              title={e2eeEnabled ? 'E2EE enabled' : 'E2EE disabled'}
-              onClick={() => setE2eeEnabled((v) => !v)}
-            >
-              {e2eeEnabled ? <Lock size={18} /> : <Unlock size={18} />}
-            </span>
+
             {/* Trash icon clears all messages in the channel */}
-            <span
-              style={{ cursor: 'pointer', color: 'black', display: 'flex', alignItems: 'center' }}
-              title="Clear Chat"
-              onClick={handleClearChat}
-            >
-              🗑️
-            </span>
+            <TooltipComponent content="Clear Chat">
+              <div
+                className="hover:bg-muted cursor-pointer rounded-full p-2"
+                onClick={handleClearChat}
+              >
+                <Trash size={18} />
+              </div>
+            </TooltipComponent>
             <div className="relative">
               <Search className="text-muted-foreground absolute top-2.5 left-2.5 h-4 w-4" />
               <Input
@@ -458,39 +360,17 @@ export default function Notes() {
         {/* Messages area */}
         <ScrollArea className="h-[calc(100vh-8rem)] p-4">
           <div className="space-y-6">
-            {messages.map((msg) => (
-              <div key={msg.id} className="group flex">
-                <Avatar className="mt-0.5 mr-3 h-10 w-10">
-                  <AvatarImage
-                    src={msg.author?.image ?? "/profile-placeholder.png"}
-                    alt={msg.author?.name ?? "User"}
-                  />
-                  <AvatarFallback>{msg.author?.name?.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="flex items-center">
-                    <span className="mr-2 font-semibold">
-                      {msg.author?.name ?? "Unknown"}
-                    </span>
-                    <span className="text-muted-foreground text-xs">
-                      {moment(msg.createdAt).format("HH:mm a")}
-                    </span>
-                    <div className="ml-2 opacity-0 transition-opacity group-hover:opacity-100">
-                      <Button variant="ghost" size="icon" className="h-6 w-6">
-                        <Smile size={14} />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-6 w-6">
-                        <AtSign size={14} />
-                      </Button>
-                    </div>
-                  </div>
-                  {/* Show decrypted or plaintext message, or [Encrypted] if not viewable */}
-                  <p className="mt-0.5">
-                    {getDecryptedContent(msg)}
-                  </p>
-                </div>
-              </div>
-            ))}
+            {messages.map((msg) => {
+              return (
+                <MessageBubble
+                  key={msg.id}
+                  message={{
+                    ...msg,
+                    decryptedContent: getDecryptedContent(msg),
+                  }}
+                />
+              );
+            })}
           </div>
         </ScrollArea>
         {/* Message input */}

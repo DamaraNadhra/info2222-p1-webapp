@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { createTRPCRouter, protectedProcedure } from "../trpc";
 import { publicProcedure } from "../trpc";
+import sodium from "libsodium-wrappers";  
+await sodium.ready;
 
 export const channelRouter = createTRPCRouter({
   getMessages: publicProcedure.query(async ({ ctx }) => {
@@ -20,12 +22,39 @@ export const channelRouter = createTRPCRouter({
       }),
     )
     .mutation(async ({ ctx, input }) => {
+      const creator = ctx.session.user;
+      const users = await ctx.db.user.findMany({
+        where: {
+          publicKey: {
+            not: null,
+          },
+          privateKey: {
+            not: null,
+          },
+        },
+      });
       const channel = await ctx.db.channel.create({
         data: {
           name: input.slug,
           slug: input.slug,
           createdById: ctx.session?.user.id,
         },
+      });
+
+      const groupKey = sodium.randombytes_buf(sodium.crypto_secretbox_KEYBYTES);
+      const encryptedGroupKeys = users.map((user) => {
+        const creatorAsUser = users.find((u) => u.id === creator.id);
+        const nonce = sodium.randombytes_buf(sodium.crypto_secretbox_NONCEBYTES);
+        const encryptedKey = sodium.crypto_box_easy(groupKey, nonce, sodium.from_base64(user.publicKey as string), sodium.from_base64(creatorAsUser?.privateKey as string));
+        return {
+          channelId: channel.id,
+          userId: user.id,
+          encryptedKey: sodium.to_base64(encryptedKey),
+          nonce: sodium.to_base64(nonce),
+        };
+      });
+      await ctx.db.channelKey.createMany({
+        data: encryptedGroupKeys,
       });
       return channel;
     }),
@@ -48,8 +77,8 @@ export const channelRouter = createTRPCRouter({
       z.object({
         channelId: z.string(),
         content: z.string(),
-        nonce: z.string(),
-        publicKey: z.string(),
+        nonce: z.string().optional(),
+        publicKey: z.string().optional(),
       }),
     )
     .mutation(async ({ ctx, input }) => {
@@ -57,8 +86,8 @@ export const channelRouter = createTRPCRouter({
         const message = await ctx.db.message.create({
           data: {
             content: input.content,
-            nonce: input.nonce,
-            publicKey: input.publicKey,
+            nonce: input.nonce ?? null,
+            publicKey: input.publicKey ?? null,
             channelId: input.channelId,
             userId: ctx.session?.user.id,
           },

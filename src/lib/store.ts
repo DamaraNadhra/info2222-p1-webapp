@@ -21,9 +21,11 @@ export const supabase = createClient(
  * @param {string} channelId the currently selected Channel
  */
 export const useStore = ({ channelId }: { channelId?: string }) => {
-  const [channels, setChannels] = useState<Channel[]>([]);
+  const [channels, setChannels] = useState<
+    (Channel & { createdByUser: User | null })[]
+  >([]);
   const [messages, setMessages] = useState<Message[]>([]);
-  const [users, setUsers] = useState(new Map());
+  const [users, setUsers] = useState(new Map<string, User>());
   const [newMessage, handleNewMessage] = useState<Message | null>(null);
   const [newChannel, handleNewChannel] = useState<Channel | null>(null);
   const [newOrUpdatedUser, handleNewOrUpdatedUser] = useState<User | null>(
@@ -95,7 +97,7 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
             if (!users.get(x.userId)) {
               await fetchUser(x.userId, (user) => users.set(user.id, user));
             }
-          })
+          }),
         );
         messages.forEach((x: any) => users.set(x.userId, x.user));
         setMessages(messages);
@@ -135,9 +137,14 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
   useEffect(() => {
     if (newChannel) {
       console.log(newChannel);
-      setChannels(channels.concat(newChannel));
+      setChannels((prev) => [
+        ...prev,
+        {
+          ...newChannel,
+          createdByUser: users.get(newChannel.createdById) ?? null,
+        },
+      ]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [newChannel]);
 
   useEffect(() => {
@@ -148,17 +155,17 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
   useEffect(() => {
     if (deletedChannel) {
       console.log(deletedChannel);
-      setChannels(
-        channels.filter((channel) => channel.id !== deletedChannel.id),
+      setChannels((prev) =>
+        prev.filter((channel) => channel.id !== deletedChannel.id),
       );
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [deletedChannel]);
 
   // New or updated user received from Postgres
   useEffect(() => {
     if (newOrUpdatedUser) users.set(newOrUpdatedUser.id, newOrUpdatedUser);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    console.log("users", users);
   }, [newOrUpdatedUser]);
 
   return {
@@ -181,7 +188,11 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
  */
 export const fetchChannels = async (setState: (value: any) => void) => {
   try {
-    const { data } = await supabase.from("Channel").select("*");
+    const { data } = await supabase.from("Channel").select(`
+        *,
+        createdByUser:createdById(*)
+      `);
+    console.log("data", data);
     if (setState) setState(data);
     return data;
   } catch (error) {
@@ -190,7 +201,10 @@ export const fetchChannels = async (setState: (value: any) => void) => {
 };
 
 // Helper to fetch a user by ID and update the users map
-export const fetchUser = async (userId: string, setUser: (user: User) => void) => {
+export const fetchUser = async (
+  userId: string,
+  setUser: (user: User) => void,
+) => {
   try {
     const { data } = await supabase
       .from("User")
