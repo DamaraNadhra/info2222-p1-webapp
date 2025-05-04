@@ -39,6 +39,9 @@ export const useStore = ({ channelId }: { channelId?: string }) => {
     // // Get Channels
     void fetchChannels(setChannels);
 
+    // Get users
+    void fetchUsers(users);
+
     // Listen for new and deleted messages
     const messageListener = supabase
       .channel("public:Message")

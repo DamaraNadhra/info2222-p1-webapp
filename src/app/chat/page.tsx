@@ -20,6 +20,7 @@ import {
   Lock,
   Unlock,
   Trash,
+  Loader2,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
@@ -39,6 +40,7 @@ import { cn } from "~/lib/utils";
 import { api } from "~/trpc/react";
 import TooltipComponent from "~/components/TooltipComponent";
 import MessageBubble from "~/components/MessageBubble";
+import toast from "react-hot-toast";
 
 export default function Chat() {
   // State for selected channel, messages, and channels
@@ -46,6 +48,7 @@ export default function Chat() {
   const { messages, channels, setChannels, setUsers } = useStore({
     channelId: selectedChannel?.id ?? undefined,
   });
+  const [isJoiningChannel, setIsJoiningChannel] = useState<boolean>(false);
   // Message input state
   const [message, setMessage] = useState("");
   // Auth/session
@@ -59,9 +62,21 @@ export default function Chat() {
     },
   );
   const { data: sessionData } = useSession();
+  const ctx = api.useUtils();
   // Mutations for channel and message actions
   const deleteChannel = api.channel.deleteChannel.useMutation();
   const deleteMessage = api.channel.deleteMessage.useMutation();
+  const joinChannel = api.channel.joinChannel.useMutation({
+    onSuccess: () => {
+      setIsJoiningChannel(false);
+      toast.success("Joined channel");
+      void ctx.user.getUserData.invalidate();
+    },
+    onMutate: () => {
+      setIsJoiningChannel(true);
+      toast.loading("Joining channel...");
+    },
+  });
   const addMessage = api.channel.addMessage.useMutation({
     onError: (error) => {
       console.error(error);
@@ -79,7 +94,7 @@ export default function Chat() {
   }, [channels]);
 
   useEffect(() => {
-    if (selectedChannel && userData) {
+    if (selectedChannel && userData && userData.channels.length > 0) {
       const currentChannel = channels.find(
         (channel) => channel.id === selectedChannel?.id,
       );
@@ -345,7 +360,7 @@ export default function Chat() {
                 className="h-9 w-48 pl-8"
               />
             </div>
-            <Button variant="ghost" size="icon">
+            <Button variant="ghost" size="icon" onClick={() => toast.success("Not implemented")}>
               <AtSign size={18} />
             </Button>
             <Avatar className="h-8 w-8">
@@ -357,75 +372,97 @@ export default function Chat() {
             </Avatar>
           </div>
         </div>
-        {/* Messages area */}
-        <ScrollArea className="h-[calc(100vh-8rem)] p-4">
-          <div className="space-y-6">
-            {messages.map((msg) => {
-              return (
-                <MessageBubble
-                  key={msg.id}
-                  message={{
-                    ...msg,
-                    decryptedContent: getDecryptedContent(msg),
-                  }}
-                />
-              );
-            })}
-          </div>
-        </ScrollArea>
-        {/* Message input */}
-        <div className="border-t p-3">
-          <form
-            onSubmit={handleSendMessage}
-            className="flex items-center gap-2"
-          >
-            <Button type="button" variant="ghost" size="icon">
-              <Plus size={18} />
-            </Button>
-            <div className="relative flex-1">
-              <Input
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                placeholder={
-                  selectedChannel
-                    ? `Message #${selectedChannel.name}`
-                    : "No channel selected, please select a channel or create a new one"
-                }
-                className="pr-20"
-                disabled={!selectedChannel}
-              />
-              <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                >
-                  <AtSign size={16} />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                >
-                  <Paperclip size={16} />
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8"
-                >
-                  <Smile size={16} />
-                </Button>
+        {channelKey ? (
+          <>
+            <ScrollArea className="h-[calc(100vh-8rem)] p-4">
+              <div className="space-y-6">
+                {messages.map((msg) => {
+                  return (
+                    <MessageBubble
+                      key={msg.id}
+                      message={{
+                        ...msg,
+                        decryptedContent: getDecryptedContent(msg),
+                      }}
+                    />
+                  );
+                })}
               </div>
+            </ScrollArea>
+
+            <div className="border-t p-3">
+              <form
+                onSubmit={handleSendMessage}
+                className="flex items-center gap-2"
+              >
+                <Button type="button" variant="ghost" size="icon">
+                  <Plus size={18} />
+                </Button>
+                <div className="relative flex-1">
+                  <Input
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder={
+                      selectedChannel
+                        ? `Message #${selectedChannel.name}`
+                        : "No channel selected, please select a channel or create a new one"
+                    }
+                    className="pr-20"
+                    disabled={!selectedChannel}
+                  />
+                  <div className="absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                    >
+                      <AtSign size={16} />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                    >
+                      <Paperclip size={16} />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                    >
+                      <Smile size={16} />
+                    </Button>
+                  </div>
+                </div>
+                <Button type="submit" size="icon" disabled={!message.trim()}>
+                  <Send size={18} />
+                </Button>
+              </form>
             </div>
-            <Button type="submit" size="icon" disabled={!message.trim()}>
-              <Send size={18} />
+          </>
+        ) : (
+          <div className="flex h-[calc(100vh-8rem)] items-center justify-center flex-col gap-2 transition-colors">
+            <p className="text-muted-foreground">
+              You have to join this channel in order to view messages.
+            </p>
+            <Button
+              variant="outline"
+              disabled={isJoiningChannel}
+              onClick={() => {
+                setIsJoiningChannel(true);
+                void joinChannel.mutateAsync({
+                  channelId: selectedChannel?.id ?? "",
+                });
+              }}
+            >
+              {isJoiningChannel && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isJoiningChannel ? "Joining..." : "Join Channel"}
             </Button>
-          </form>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
