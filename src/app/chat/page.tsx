@@ -84,10 +84,10 @@ export default function Chat() {
         (channel) => channel.id === selectedChannel?.id,
       );
       const decryptedGroupKey = sodium.crypto_box_open_easy(
-        sodium.from_base64(userData?.channels[0]?.encryptedKey as string),
-        sodium.from_base64(userData?.channels[0]?.nonce as string),
-        sodium.from_base64(currentChannel?.createdByUser?.publicKey as string),
-        sodium.from_base64(userData?.privateKey as string),
+        sodium.from_base64(userData?.channels[0]!.encryptedKey),
+        sodium.from_base64(userData?.channels[0]!.nonce),
+        sodium.from_base64(currentChannel?.createdByUser?.publicKey ?? ""),
+        sodium.from_base64(userData?.privateKey ?? ""),
       );
       setChannelKey(sodium.to_base64(decryptedGroupKey));
     }
