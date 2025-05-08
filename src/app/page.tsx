@@ -24,6 +24,9 @@ import { Bold, Italic, Underline, Strikethrough } from "lucide-react";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { redirect } from "next/navigation";
 import { Button } from "~/components/ui/button";
+import { DosDemo } from "~/components/DosDemo";
+import { api } from "~/trpc/react";
+import { Role } from "@prisma/client";
 
 interface SidebarProps {
   onNotesClose: () => void;
@@ -70,9 +73,7 @@ const Sidebar: FC<SidebarProps> = ({
 
       {/* File Section */}
       <div className="mt-2">
-        <button
-          className="flex w-full cursor-pointer items-center justify-center rounded p-2 text-left hover:bg-gray-200"
-        >
+        <button className="flex w-full cursor-pointer items-center justify-center rounded p-2 text-left hover:bg-gray-200">
           <GoFileSubmodule className="h-10 w-10" />
         </button>
         <p className="text-center text-xs">File</p>
@@ -232,6 +233,13 @@ export default function Home() {
 
   const { data: session, status } = useSession();
 
+  const { data: userData } = api.user.getUserData.useQuery(
+    {},
+    {
+      enabled: !!session?.user,
+    },
+  );
+
   useEffect(() => {
     if (status === "unauthenticated") {
       redirect("/auth/signIn");
@@ -253,6 +261,7 @@ export default function Home() {
         <main className={`flex flex-1 flex-col`}>
           {/* Main Content Area */}
           <div className="flex-1 p-4">
+            {userData?.role === Role.ADMIN && <DosDemo />}
             <div className="h-full w-full rounded-lg border border-gray-200 bg-white p-4">
               <div className="prose prose-sm max-w-none focus:outline-none">
                 <Editor

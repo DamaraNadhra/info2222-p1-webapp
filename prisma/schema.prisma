@@ -38,6 +38,11 @@ model Session {
     user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+enum Role {
+    USER
+    ADMIN
+}
+
 model User {
     id            String    @id @default(cuid())
     name          String?
@@ -52,6 +57,7 @@ model User {
     publicKey     String?
     privateKey    String?
     channels      ChannelKey[]
+    role          Role    @default(USER)
 }
 
 model VerificationToken {

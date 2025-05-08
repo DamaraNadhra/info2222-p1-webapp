@@ -40,6 +40,7 @@ export const userRouter = createTRPCRouter({
           name: true,
           publicKey: true,
           privateKey: true,
+          role: true,
           channels: {
             where: {
               channelId: input.channelId ?? "",
