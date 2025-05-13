@@ -22,6 +22,7 @@ import {
   Trash,
   Loader2,
   UserRound,
+  HomeIcon,
 } from "lucide-react";
 import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
@@ -44,6 +45,7 @@ import MessageBubble from "~/components/MessageBubble";
 import toast from "react-hot-toast";
 import ClearingChatDialog from "~/components/ClearingChatDialog";
 import CreateChannelDialog from "~/components/CreateChannelDialog";
+import { redirect } from "next/navigation";
 
 export default function Chat() {
   // State for selected channel, messages, and channels
@@ -379,9 +381,11 @@ export default function Chat() {
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => toast.success("Not implemented")}
+              onClick={() => {
+                redirect("/");
+              }}
             >
-              <AtSign size={18} />
+              <HomeIcon size={18} />
             </Button>
             <Avatar className="h-8 w-8">
               <AvatarImage
