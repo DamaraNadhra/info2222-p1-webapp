@@ -115,13 +115,17 @@ export default function Chat() {
       const currentChannel = channels.find(
         (channel) => channel.id === selectedChannel?.id,
       );
-      const decryptedGroupKey = sodium.crypto_box_open_easy(
-        sodium.from_base64(userData?.channels[0]!.encryptedKey),
-        sodium.from_base64(userData?.channels[0]!.nonce),
-        sodium.from_base64(currentChannel?.createdByUser?.publicKey ?? ""),
-        sodium.from_base64(userData?.privateKey ?? ""),
-      );
-      setChannelKey(sodium.to_base64(decryptedGroupKey));
+      if (userData?.channels[0]?.id !== currentChannel?.id) {
+        setChannelKey(null);
+      } else {
+        const decryptedGroupKey = sodium.crypto_box_open_easy(
+          sodium.from_base64(userData?.channels[0]!.encryptedKey),
+          sodium.from_base64(userData?.channels[0]!.nonce),
+          sodium.from_base64(currentChannel?.createdByUser?.publicKey ?? ""),
+          sodium.from_base64(userData?.privateKey ?? ""),
+        );
+        setChannelKey(sodium.to_base64(decryptedGroupKey));
+      }
     }
   }, [selectedChannel, userData]);
 
