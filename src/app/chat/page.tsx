@@ -64,9 +64,7 @@ export default function Chat() {
 
   const { data: userData, isLoading: isUserDataLoading } =
     api.user.getUserData.useQuery(
-      {
-        channelId: selectedChannel?.id ?? "",
-      },
+      undefined,
       {
         enabled: !!selectedChannel,
       },
@@ -115,19 +113,22 @@ export default function Chat() {
       const currentChannel = channels.find(
         (channel) => channel.id === selectedChannel?.id,
       );
-      if (userData?.channels[0]?.id !== currentChannel?.id) {
+      const userCurrentChannel = userData?.channels.find(
+        (channel) => channel.channel.id === selectedChannel?.id,
+      );
+      if (!userCurrentChannel) {
         setChannelKey(null);
       } else {
         const decryptedGroupKey = sodium.crypto_box_open_easy(
-          sodium.from_base64(userData?.channels[0]!.encryptedKey),
-          sodium.from_base64(userData?.channels[0]!.nonce),
+          sodium.from_base64(userCurrentChannel.encryptedKey),
+          sodium.from_base64(userCurrentChannel.nonce),
           sodium.from_base64(currentChannel?.createdByUser?.publicKey ?? ""),
           sodium.from_base64(userData?.privateKey ?? ""),
         );
         setChannelKey(sodium.to_base64(decryptedGroupKey));
       }
     }
-  }, [selectedChannel, userData]);
+  }, [selectedChannel, userData, isUserDataLoading]);
 
   // Mock data for direct messages (not E2EE, just for UI demo)
   const directMessages = [
