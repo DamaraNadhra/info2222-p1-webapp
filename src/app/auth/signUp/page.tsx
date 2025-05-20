@@ -31,7 +31,7 @@ export default function SignupForm() {
       void signIn("credentials", {
         email,
         password,
-        callbackUrl: "/",
+        redirect: false,
       });
     },
     onError: (error) => {
