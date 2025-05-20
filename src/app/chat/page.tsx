@@ -64,7 +64,7 @@ export default function Chat() {
 
   const { data: userData, isLoading: isUserDataLoading } =
     api.user.getUserData.useQuery(
-      undefined,
+      {},
       {
         enabled: !!selectedChannel,
       },
